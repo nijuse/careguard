@@ -11,3 +11,4 @@ data/adherence.jsonl
 data/recipients/*/*.json
 !data/recipients/*/
 .DS_Store
+fix.md
