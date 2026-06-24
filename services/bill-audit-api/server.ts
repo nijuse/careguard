@@ -14,8 +14,12 @@ if (!process.stdout.isTTY) {
 
 import "dotenv/config";
 import express from "express";
-import { z } from "zod";
 import { readFileSync } from "fs";
+import {
+  BillAuditValidationError,
+  type LineItem,
+  validateBillAuditRequest,
+} from "../../shared/bill-audit.ts";
 import { applyX402Middleware, NETWORK, OZ_FACILITATOR_URL } from "../../shared/x402-middleware.ts";
 import { createCorsMiddleware } from "../../shared/cors.ts";
 import { applySecurityMiddleware } from "../../shared/security-middleware.ts";
@@ -132,21 +136,7 @@ function checkRatesFreshness() {
 // Check freshness at boot
 checkRatesFreshness();
 
-interface BillItem { description: string; cptCode: string; quantity: number; chargedAmount: number; }
-
-// Zod schema for validating bill items
-const BillItemSchema = z.object({
-  description: z.string().min(1, "description is required"),
-  cptCode: z.string().min(1, "cptCode is required"),
-  quantity: z.number().positive("quantity must be positive"),
-  chargedAmount: z.number().nonnegative("chargedAmount must be non-negative"),
-});
-
-const BillAuditRequestSchema = z.object({
-  lineItems: z.array(BillItemSchema).min(1, "lineItems must contain at least one item"),
-});
-
-function auditBill(lineItems: BillItem[]) {
+function auditBill(lineItems: LineItem[]) {
   const results: any[] = [];
   let totalCharged = 0, totalCorrect = 0, errorCount = 0;
   const seenCodes: Record<string, number> = {};
@@ -235,20 +225,18 @@ applyX402Middleware(app, {
 
 app.post("/bill/audit", (req, res) => {
   try {
-    const validatedData = BillAuditRequestSchema.parse(req.body);
+    const validatedData = validateBillAuditRequest(req.body);
     res.json(auditBill(validatedData.lineItems));
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      const issues = error.issues.map((issue, idx) => {
-        const path = issue.path.join(".");
-        return `Item ${path}: ${issue.message}`;
-      });
+    if (error instanceof BillAuditValidationError) {
       res.status(400).json({
-        error: "Invalid lineItems",
-        details: issues,
+        ok: false,
+        reason: error.code,
+        message: error.message,
+        issues: error.issues,
       });
     } else {
-      res.status(400).json({ error: "Invalid request body" });
+      res.status(400).json({ ok: false, reason: "INVALID_REQUEST_BODY" });
     }
   }
 });
