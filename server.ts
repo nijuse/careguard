@@ -765,7 +765,7 @@ app.get("/drug/interactions", (req, res) => {
 // MPP PHARMACY PAYMENT (was port 3005)
 // ============================================================
 
-const DATA_DIR = new URL("./data", import.meta.url).pathname;
+const DATA_DIR = process.env.DATA_DIR || new URL("./data", import.meta.url).pathname;
 const ORDERS_FILE = `${DATA_DIR}/orders.json`;
 if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 
