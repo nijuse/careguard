@@ -513,6 +513,20 @@ function requireCaregiverToken(req: express.Request, res: express.Response, next
   next();
 }
 
+// SSE client registry — one entry per open /agent/stream connection
+const sseClients = new Set<express.Response>();
+
+function broadcastSSE(event: string, data: unknown): void {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(payload);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
+
 // Express API
 const app: Express = express();
 
@@ -645,13 +659,48 @@ app.post("/agent/pause", (_req, res) => {
   agentPaused = true;
   logger.info("agent paused by caregiver");
   notify({ level: "warning", title: "Agent Paused", description: "CareGuard agent has been paused by the caregiver. No payments or actions will be processed until resumed." });
+  broadcastSSE("status", { paused: true });
   res.json({ paused: true });
 });
 app.post("/agent/resume", (_req, res) => {
   agentPaused = false;
   logger.info("agent resumed by caregiver");
   notify({ level: "info", title: "Agent Resumed", description: "CareGuard agent has been resumed and is now processing actions." });
+  broadcastSSE("status", { paused: false });
   res.json({ paused: false });
+});
+
+// SSE stream: pushes spending, transactions, and agent status on state changes.
+// Clients reconnect automatically via the EventSource API; heartbeats keep the
+// connection alive through proxies that close idle connections.
+app.get("/agent/stream", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  const recipientId = (req.query.recipient_id as string) || "rosa";
+  setCurrentRecipient(recipientId);
+
+  res.write(`event: spending\ndata: ${JSON.stringify(getSpendingSummary())}\n\n`);
+  res.write(`event: status\ndata: ${JSON.stringify({ paused: agentPaused })}\n\n`);
+  res.write(`event: transactions\ndata: ${JSON.stringify(getSpendingTracker())}\n\n`);
+
+  sseClients.add(res);
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(": heartbeat\n\n");
+    } catch {
+      sseClients.delete(res);
+      clearInterval(heartbeat);
+    }
+  }, 30_000);
+
+  req.on("close", () => {
+    sseClients.delete(res);
+    clearInterval(heartbeat);
+  });
 });
 
 app.post("/agent/run", async (req, res) => {
@@ -666,6 +715,8 @@ app.post("/agent/run", async (req, res) => {
     const result = await agentQueue.enqueue(() => runAgent(task));
     agentRunsTotal.inc({ status: "success" });
     logger.info({ toolCalls: result.toolCalls.length, truncated: result.truncated, promptTokens: result.llmUsage.promptTokens, completionTokens: result.llmUsage.completionTokens }, "agent task complete");
+    broadcastSSE("spending", getSpendingSummary());
+    broadcastSSE("transactions", getSpendingTracker());
     res.json(result);
   } catch (err: any) {
     if (err.status === 429) {
@@ -696,12 +747,15 @@ app.post("/agent/policy", (req, res) => {
   const recipientId = (req.query.recipient_id as string) || "rosa";
   setCurrentRecipient(recipientId);
   setSpendingPolicy(result.data);
+  broadcastSSE("spending", getSpendingSummary());
   res.json({ success: true, policy: result.data, recipientId });
 });
 app.post("/agent/reset", (req, res) => {
   const recipientId = (req.query.recipient_id as string) || "rosa";
   setCurrentRecipient(recipientId);
   resetSpendingTracker();
+  broadcastSSE("spending", getSpendingSummary());
+  broadcastSSE("transactions", getSpendingTracker());
   res.json({ success: true, recipientId });
 });
 
