@@ -95,7 +95,7 @@ import {
 
 // --- Environment ---
 const envSchema = z.object({
-  PORT: z.coerce.number().int().positive().default(3004),
+  PORT: z.coerce.number().int().min(1, "PORT must be >= 1").max(65535, "PORT must be <= 65535").default(3004),
   STELLAR_NETWORK: z.enum(["testnet", "public"]).default("testnet"),
   LLM_API_KEY: z.string().min(1, "LLM_API_KEY required"),
   AGENT_SECRET_KEY: z.string().min(1, "AGENT_SECRET_KEY required"),
