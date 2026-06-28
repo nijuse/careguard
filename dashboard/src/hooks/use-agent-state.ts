@@ -203,10 +203,70 @@ export function useAgentState({ activeTab }: UseAgentStateOptions) {
     [],
   );
 
-  // Poll spending and transactions every 3s with backoff
+  // SSE: server pushes spending/transactions/status on state change (#274).
+  // Falls back to polling when SSE is unavailable (old proxies, browsers without EventSource).
+  const [sseConnected, setSseConnected] = useState(false);
+
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return;
+
+    let es: EventSource | null = null;
+    let active = true;
+
+    function connect() {
+      if (!active) return;
+      es = new EventSource(`${AGENT_URL}/agent/stream`);
+
+      es.onopen = () => { if (active) setSseConnected(true); };
+      es.onerror = () => {
+        setSseConnected(false);
+        es?.close();
+        if (active) setTimeout(connect, 5_000);
+      };
+
+      es.addEventListener('spending', (e: MessageEvent) => {
+        try {
+          const data = SpendingDataSchema.parse(JSON.parse(e.data));
+          setSpending(data);
+          if (activeTabRef.current !== 'policy' && !policyDirtyRef.current) {
+            setPolicyForm(data.policy);
+          }
+        } catch {}
+      });
+
+      es.addEventListener('transactions', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (Array.isArray(data.transactions)) {
+            const txs = data.transactions
+              .map((t: unknown) => TransactionSchema.parse(t))
+              .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            setAllTransactions(txs);
+            if (data.pagination) setPagination(data.pagination);
+          }
+        } catch {}
+      });
+
+      es.addEventListener('status', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          setAgentPaused(Boolean(data.paused));
+        } catch {}
+      });
+    }
+
+    connect();
+    return () => {
+      active = false;
+      es?.close();
+      setSseConnected(false);
+    };
+  }, []);
+
+  // Polling fallback: active only when SSE is not connected (#274).
   const spendingPoll = usePoll({
     intervalMs: 3000,
-    enabled: true,
+    enabled: !sseConnected,
     onPoll: async () => {
       await fetchSpending();
       await fetchTransactions(pageSize, currentPage * pageSize);
@@ -216,7 +276,7 @@ export function useAgentState({ activeTab }: UseAgentStateOptions) {
     },
   });
 
-  // Poll agent info every 10s with backoff
+  // Poll agent info every 10s with backoff (no SSE equivalent — infrequent enough)
   const agentInfoPoll = usePoll({
     intervalMs: 10000,
     enabled: true,
