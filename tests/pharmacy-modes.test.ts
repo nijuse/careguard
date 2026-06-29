@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import request from "supertest";
+import { Keypair } from "@stellar/stellar-sdk";
+
+// Mock Keypair.fromSecret to prevent invalid checksum errors with dummy secret keys
+vi.spyOn(Keypair, "fromSecret").mockImplementation(() => {
+  return {
+    publicKey: () => "GBQTESTPHARMACY1",
+    secret: () => "mock-secret",
+  } as any;
+});
 
 vi.mock("../shared/x402-middleware.ts", () => ({
   applyX402Middleware: vi.fn(),
@@ -10,11 +19,13 @@ vi.mock("../shared/x402-middleware.ts", () => ({
 
 // Mock env vars before importing server.ts to satisfy z.object schema validation
 process.env.LLM_API_KEY = "mock-key";
-process.env.AGENT_SECRET_KEY = "SCSX42MLKILDY2RIGTK4AXI4OCP22Y2BD3QAJXRTKYAXJ6G7BBN3ZB4I";
+process.env.AGENT_SECRET_KEY = "S-mock-secret";
 process.env.PHARMACY_1_PUBLIC_KEY = "GBQTESTPHARMACY1";
 process.env.BILL_PROVIDER_PUBLIC_KEY = "GBQTESTPHARMACY2";
-process.env.MPP_SECRET_KEY = "SCSX42MLKILDY2RIGTK4AXI4OCP22Y2BD3QAJXRTKYAXJ6G7BBN3ZB4I";
+process.env.MPP_SECRET_KEY = "S-mock-secret";
 process.env.CAREGIVER_TOKEN = "mock-token";
+
+
 
 
 
