@@ -26,6 +26,7 @@ import {
   metricsHandler,
   agentRunsTotal,
 } from "../shared/metrics.ts";
+import { redactPII, hashTask } from "../shared/redact.ts";
 import {
   getSpendingSummary,
   getWalletBalance,
@@ -338,7 +339,8 @@ app.post("/agent/run", async (req, res) => {
   if (agentPaused) { res.status(409).json({ error: "Agent is paused. Resume from the dashboard to continue.", paused: true }); return; }
 
   const task = validation.task!;
-  logger.info({ task, suspicious: validation.suspicious }, "agent task received");
+  logger.debug({ task: redactPII(task), suspicious: validation.suspicious }, "agent task received (redacted)");
+  logger.info({ taskHash: hashTask(task) }, "agent task received");
 
   const activeRecipient = recipientProfiles.rosa ?? Object.values(recipientProfiles)[0];
   try {
