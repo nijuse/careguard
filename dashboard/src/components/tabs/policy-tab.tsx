@@ -161,8 +161,7 @@ export function PolicyTab({
         Spending Policy for {recipient.name}
       </h2>
       <p className="text-xs text-slate-500 mb-6">
-        These limits are enforced by Soroban smart contracts on Stellar. The
-        agent cannot exceed them.
+        These limits are enforced server-side by the CareGuard agent before every payment.
       </p>
       <form noValidate onSubmit={handleSubmit} className="space-y-4">
         {FIELDS.map(([key, label]) => {

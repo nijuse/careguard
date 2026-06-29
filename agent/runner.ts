@@ -19,6 +19,7 @@ import {
   agentLlmContextUsageRatio,
   agentLlmErrorTotal,
   agentIterationLimitTotal,
+  agentLlmLatencyMs,
 } from "../shared/metrics.ts";
 import {
   comparePharmacyPrices,
@@ -333,6 +334,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         llmMaxTokensSummary,
       );
 
+      const startTime = performance.now();
       response = await llm.chat.completions.create({
         model,
         temperature,
@@ -340,6 +342,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         tools: LLM_TOOLS,
         messages,
       });
+      agentLlmLatencyMs.set({ model }, performance.now() - startTime);
     } catch (llmErr: any) {
       logger.error({ err: llmErr.message, iteration }, "LLM API error");
       agentLlmErrorTotal.inc();

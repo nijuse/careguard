@@ -85,6 +85,11 @@ describe("PolicyTab — rendering (Issue #47)", () => {
     render(<PolicyTab {...buildProps()} />);
     expect(screen.getByText(/Rosa Garcia/)).toBeTruthy();
   });
+
+  it("matches snapshot to ensure dashboard text remains accurate", () => {
+    const { container } = render(<PolicyTab {...buildProps()} />);
+    expect(container).toMatchSnapshot();
+  });
 });
 
 describe("PolicyTab — form interaction (Issue #47)", () => {

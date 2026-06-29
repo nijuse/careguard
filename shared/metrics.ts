@@ -123,6 +123,13 @@ export const agentLlmErrorTotal = new Counter({
   registers: [registry],
 });
 
+export const agentLlmLatencyMs = new Gauge({
+  name: "agent_llm_latency_ms",
+  help: "LLM API latency in milliseconds",
+  labelNames: ["model"] as const,
+  registers: [registry],
+});
+
 export const stellarFeeBumpsTotal = new Counter({
   name: "stellar_fee_bumps_total",
   help: "Total Stellar fee-bump transactions submitted",
