@@ -70,6 +70,7 @@ import {
 import { executeTool, runAgent } from "./agent/runner.ts";
 import { resolveRequestedDosage } from "./services/pharmacy-api/dosage.ts";
 import { createPharmacyPricingStore } from "./services/pharmacy-api/db.ts";
+import { PRICING_DATABASE, getAvailableDrugs } from "./shared/pharmacy-pricing.ts";
 import { createCareRecipientsStore } from "./services/care-recipients/db.ts";
 import type { CareRecipient } from "./services/care-recipients/db.ts";
 import {
@@ -1099,7 +1100,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     } catch {
       usdcBalance = "unable to check";
     }
-    logger.info({ port: PORT, network: NETWORK, llm: LLM_MODEL, wallet: agentKeypair.publicKey(), usdc: usdcBalance }, "CareGuard Unified Server started");
+    logger.info({ port: PORT, network: NETWORK, llm: LLM_MODEL, wallet: agentKeypair.publicKey(), usdc: usdcBalance, availableDrugs: getAvailableDrugs() }, "CareGuard Unified Server started");
     await startWalletBalanceScheduler();
   });
 

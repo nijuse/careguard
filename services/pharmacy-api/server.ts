@@ -26,6 +26,7 @@ import { pharmacyUnknownDrugTotal } from "../../shared/metrics.ts";
 import type { PharmacyPricingStore } from "./db.ts";
 import { createPharmacyPricingStore } from "./db.ts";
 import { resolveRequestedDosage } from "./dosage.ts";
+import { PRICING_DATABASE, getAvailableDrugs } from "../../shared/pharmacy-pricing.ts";
 import {
   buildCompareResponse,
   DrugRecordSchema,
@@ -340,6 +341,7 @@ if (import.meta.url === entrypointUrl) {
         payTo: PAY_TO,
         provider: "sqlite",
         drugCount: startedApp.pricingStore.getDrugCount(),
+        availableDrugs: getAvailableDrugs(),
       },
       "Pharmacy Price API started",
     );
