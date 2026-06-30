@@ -1,6 +1,16 @@
-import type { SpendingData, Transaction } from "../lib/types";
+import type { SpendingData, Transaction, AuditLogEvent } from "../lib/types";
 
-export type { SpendingData, Transaction };
+export type { SpendingData, Transaction, AuditLogEvent };
+
+export interface AgentEvent {
+  kind: string;
+}
+
+export interface AgentLlmError {
+  message: string;
+  code?: string;
+  iteration: number;
+}
 
 export interface AgentResult {
   response: string;
@@ -10,6 +20,8 @@ export interface AgentResult {
     promptTokens: number;
     completionTokens: number;
   };
+  events?: AgentEvent[];
+  error?: AgentLlmError;
 }
 
 export interface AgentInfo {

@@ -27,7 +27,7 @@ export const PharmacyPriceSchema = z.object({
   pharmacyId: z.string().optional(),
   price: z.number(),
   distance: z.string().optional(),
-  inStock: z.boolean().optional(),
+  inStock: z.union([z.boolean(), z.literal('unknown')]).optional(),
 });
 
 export const PharmacyCompareResultSchema = z.object({
@@ -62,13 +62,25 @@ export const TransactionSchema = z.object({
   description: z.string(),
   amount: z.number(),
   recipient: z.string(),
+  // Always a real 64-char hex Stellar tx hash, or undefined (#14).
   stellarTxHash: z.string().optional(),
+  txHashStatus: z.enum(["extracted", "extraction_failed"]).optional(),
   mppOrderId: z.string().optional(),
+  pendingUntil: z.string().optional(),
   status: z.string(),
   category: z.string(),
 });
 
 export type Transaction = z.infer<typeof TransactionSchema>;
+
+export const AuditLogSchema = z.object({
+  timestamp: z.string(),
+  event: z.string(),
+  actor: z.string(),
+  details: z.any(),
+});
+
+export type AuditLogEvent = z.infer<typeof AuditLogSchema>;
 
 export const SpendingDataSchema = z.object({
   policy: z.object({
@@ -76,7 +88,7 @@ export const SpendingDataSchema = z.object({
     monthlyLimit: z.number(),
     medicationMonthlyBudget: z.number(),
     billMonthlyBudget: z.number(),
-    approvalThreshold: z.number(),
+    approvalThreshold: z.number(), holdTimeSeconds: z.number().optional().default(86400),
   }),
   spending: z.object({
     medications: z.number(),
@@ -98,5 +110,26 @@ export type RecipientProfile = {
   name: string;
   age?: number;
   facility?: string;
+  medications?: string[];
+  doctor?: string;
+  insurance?: string;
+  avatar?: string;
 };
 
+export type CaregiverProfile = {
+  name: string;
+  relationship?: string;
+  location?: string;
+  notifications?: string;
+};
+
+export type DisputeLetter = {
+  billId: string;
+  recipientName: string;
+  facility: string;
+  totalOvercharge: number;
+  errorCount: number;
+  emailText: string;
+  emailHtml: string;
+  generatedAt: string;
+};

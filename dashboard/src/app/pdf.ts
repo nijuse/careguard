@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { BillAuditResult, DrugInteractionResult, PharmacyCompareResult, SpendingData, Transaction } from "../lib/types";
+import type { BillAuditResult, DrugInteractionResult, PharmacyCompareResult, SpendingData, Transaction, DisputeLetter } from "../lib/types";
 import { DEFAULT_PDF_THEME, type PdfTheme } from "../lib/pdf-theme";
 import type { RecipientProfile } from "../lib/types";
 
@@ -150,11 +150,29 @@ export function downloadBillAuditPDF(
     },
   });
 
-  // Recommendation
+  // Recommendation — split so jsPDF can measure line count for page-break logic.
+  // maxWidth option on doc.text() wraps visually but doesn't let us count lines,
+  // so use splitTextToSize and handle overflow explicitly (Issue #227).
+  const REC_MAX_WIDTH = 182;
+  const REC_LINE_HEIGHT = 5; // mm at fontSize 9
+  const PAGE_BOTTOM = 275;  // leave room above footer
+
   const finalY = doc.lastAutoTable?.finalY || 200;
+  const recLines: string[] = doc.splitTextToSize(auditResult.recommendation || "", REC_MAX_WIDTH);
+  const recStartY = finalY + 8;
+
   doc.setFontSize(9);
   doc.setTextColor(15, 23, 42);
-  doc.text(auditResult.recommendation || "", 14, finalY + 8, { maxWidth: 180 });
+
+  if (recStartY + recLines.length * REC_LINE_HEIGHT > PAGE_BOTTOM) {
+    doc.addPage();
+    addHeader(doc, "Medical Bill Audit Report (cont.)", subtitle, theme);
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text(recLines, 14, 58);
+  } else {
+    doc.text(recLines, 14, recStartY);
+  }
 
   addFooter(doc);
   doc.save("careguard-bill-audit-report.pdf");
@@ -209,7 +227,7 @@ export function downloadMedicationPDF(
     autoTable(doc, {
       startY: y,
       head: [["Pharmacy", "Price", "Distance", "In Stock"]],
-      body: r.prices.map((p) => [p.pharmacyName, `$${p.price}`, p.distance || "-", p.inStock ? "Yes" : "No"]),
+      body: r.prices.map((p) => [p.pharmacyName, `$${p.price}`, p.distance || "-", p.inStock === true ? "Yes" : p.inStock === 'unknown' ? "Unknown" : "No"]),
       headStyles: { fillColor: theme.headerColor, fontSize: 7 },
       bodyStyles: { fontSize: 7 },
       alternateRowStyles: { fillColor: [248, 250, 252] },
@@ -311,4 +329,49 @@ export function downloadTransactionPDF(
 
   addFooter(doc);
   doc.save("careguard-transaction-report.pdf");
+}
+
+export function downloadDisputeLetterPDF(
+  letter: DisputeLetter,
+  options?: { theme?: PdfTheme }
+) {
+  const theme = options?.theme ?? DEFAULT_PDF_THEME;
+  const doc = new jsPDF();
+  doc.setProperties({
+    title: `CareGuard Dispute Letter — ${letter.recipientName}`,
+    subject: `Bill dispute for ${letter.recipientName}`,
+    author: "CareGuard",
+    keywords: `${letter.recipientName},dispute,bill,stellar`,
+    creator: `CareGuard ${new Date().toISOString()}`,
+  });
+
+  addHeader(doc, "Medical Bill Dispute Letter", `Patient: ${letter.recipientName} | Facility: ${letter.facility} | Overcharge: $${letter.totalOvercharge.toFixed(2)}`, theme);
+
+  let y = 58;
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+
+  // Letter body
+  const lines = letter.emailText.split("\n");
+  for (const line of lines) {
+    if (y > 270) {
+      doc.addPage();
+      y = 30;
+      addHeader(doc, "Medical Bill Dispute Letter (cont.)", `Patient: ${letter.recipientName}`, theme);
+      doc.setFontSize(10);
+      doc.setTextColor(15, 23, 42);
+    }
+    // Indent bullet points
+    const indent = line.startsWith("  -") || line.startsWith("    ") ? 20 : 14;
+    doc.text(line, indent, y);
+    y += 6;
+  }
+
+  addFooter(doc);
+  doc.save(`careguard-dispute-letter-${letter.billId}.pdf`);
+}
+
+export function downloadDisputeLetterEmail(letter: DisputeLetter): string {
+  // Returns email-ready HTML
+  return letter.emailHtml;
 }

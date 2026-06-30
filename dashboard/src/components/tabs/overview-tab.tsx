@@ -1,9 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Bar } from "../primitives/bar";
 import { Btn } from "../primitives/btn";
 import { Card } from "../primitives/card";
-import type { AgentResult, SpendingData } from "../types";
+import type { AgentResult, AgentLlmError, SpendingData } from "../types";
+import type { RecipientProfile } from "../../lib/types";
+import { agentFetch } from "../../lib/agent-fetch";
 
 export interface OverviewTabProps {
   spending: SpendingData | null;
@@ -12,6 +15,8 @@ export interface OverviewTabProps {
   loading: boolean;
   activeTask: string;
   onRunTask: (task: string, label: string) => void;
+  onCancelTask?: () => void;
+  recipient?: RecipientProfile;
 }
 
 const TASKS = {
@@ -27,6 +32,8 @@ export function OverviewTab({
   loading,
   activeTask,
   onRunTask,
+  onCancelTask,
+  recipient,
 }: OverviewTabProps) {
   const savings = agentResult
     ? agentResult.toolCalls
@@ -56,6 +63,8 @@ export function OverviewTab({
       tabIndex={0}
       className="space-y-6"
     >
+      <AdherencePrompt />
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card
           label="Monthly Spending"
@@ -85,7 +94,7 @@ export function OverviewTab({
           label="LLM Tokens"
           value={agentResult ? `${llmTokens} tokens` : "0 tokens"}
           sub={`≈ $${llmCost} this run`}
-          color="purple"
+          color="sky"
         />
       </div>
 
@@ -140,12 +149,33 @@ export function OverviewTab({
           />
         </div>
         {loading && (
-          <div className="mt-4 flex items-center gap-2 text-sm text-sky-600">
+          <div className="mt-4 flex items-center gap-3 text-sm text-sky-600">
             <div className="w-4 h-4 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" />
             Agent working...
+            {onCancelTask && (
+              <button
+                onClick={onCancelTask}
+                className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 cursor-pointer transition-all"
+              >
+                Cancel
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {agentResult?.events?.some((e) => e.kind === "iteration_limit_reached") && (
+        <div
+          role="alert"
+          className="bg-yellow-50 border border-yellow-300 rounded-xl p-4 text-sm text-yellow-800"
+        >
+          Task may be incomplete — agent ran out of steps
+        </div>
+      )}
+
+      {agentResult?.error && (
+        <LlmErrorBanner error={agentResult.error} />
+      )}
 
       {agentResult && (
         <div
@@ -163,6 +193,95 @@ export function OverviewTab({
             {agentResult.toolCalls.length} tool calls | API cost: $
             {agentResult.spending.spending.serviceFees.toFixed(4)}
           </div>
+        </div>
+      )}
+
+      {/* Medication Adherence Prompt (Issue #264) */}
+      {agentResult?.toolCalls.some((t) => t.tool === "pay_for_medication" && t.result?.success) && (
+        <div className="bg-white rounded-xl border border-amber-200 p-6">
+          <h2 className="text-sm font-semibold text-amber-800 mb-2">
+            Medication Adherence Check
+          </h2>
+          <p className="text-sm text-amber-700">
+            Did {recipient?.name || "the care recipient"} take their medication today?
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button className="px-4 py-2 bg-green-50 text-green-700 rounded-lg text-xs font-medium hover:bg-green-100 cursor-pointer transition-all">
+              Yes — Taken
+            </button>
+            <button className="px-4 py-2 bg-red-50 text-red-700 rounded-lg text-xs font-medium hover:bg-red-100 cursor-pointer transition-all">
+              Not Yet
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LlmErrorBanner({ error }: { error: AgentLlmError }) {
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      className="bg-red-50 border border-red-300 rounded-xl p-4 text-sm text-red-800"
+    >
+      <p className="font-semibold mb-1">⚠ LLM error at iteration {error.iteration} — results below are partial</p>
+      <p className="text-red-700">{error.message}{error.code ? ` (${error.code})` : ""}</p>
+    </div>
+  );
+}
+
+function AdherencePrompt() {
+  const [adherence, setAdherence] = useState<{ pending: Array<{ id: string; drug: string; dueDate: string }>; flagged: Array<{ id: string; drug: string }> } | null>(null);
+
+  useEffect(() => {
+    agentFetch("/agent/adherence/pending?recipient_id=rosa")
+      .then((r) => r.json())
+      .then((data) => setAdherence(data))
+      .catch(() => {});
+  }, []);
+
+  const handleConfirm = async (recordId: string) => {
+    try {
+      await agentFetch("/agent/adherence/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ record_id: recordId }),
+      });
+      setAdherence((prev) => prev ? { ...prev, pending: prev.pending.filter((p) => p.id !== recordId) } : prev);
+    } catch {}
+  };
+
+  if (!adherence || (adherence.pending.length === 0 && adherence.flagged.length === 0)) return null;
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+      <h2 className="text-sm font-semibold text-amber-800 mb-2">Medication Adherence</h2>
+      {adherence.flagged.length > 0 && (
+        <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-xs font-medium text-red-700">
+            {adherence.flagged.length} medication(s) flagged for persistent skipped doses
+          </p>
+        </div>
+      )}
+      {adherence.pending.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-amber-700">Did Rosa take her medication?</p>
+          {adherence.pending.map((item) => (
+            <div key={item.id} className="flex items-center justify-between bg-white rounded-lg p-2 border border-amber-100">
+              <div>
+                <span className="text-sm font-medium text-slate-700">{item.drug}</span>
+                <span className="text-xs text-slate-400 ml-2">due {new Date(item.dueDate).toLocaleDateString()}</span>
+              </div>
+              <button
+                onClick={() => handleConfirm(item.id)}
+                className="px-3 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-medium hover:bg-green-100 cursor-pointer"
+              >
+                Confirm Taken
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>

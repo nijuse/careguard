@@ -3,16 +3,6 @@ import type { RequestHandler } from "express";
 import { logger } from "./logger.ts";
 
 export function createCorsMiddleware(): RequestHandler {
-  const nodeEnv = process.env.NODE_ENV ?? "development";
-
-  if (nodeEnv !== "production") {
-    logger.warn(
-      "CORS: running in non-production mode — all origins allowed (wildcard). " +
-        "Set NODE_ENV=production and ALLOWED_ORIGINS to restrict access.",
-    );
-    return cors() as RequestHandler;
-  }
-
   const allowed = parseAllowedOrigins();
   logger.info(`CORS: allowlist = [${allowed.join(", ")}]`);
 
@@ -29,6 +19,10 @@ export function createCorsMiddleware(): RequestHandler {
 }
 
 function parseAllowedOrigins(): string[] {
+  // DASHBOARD_ORIGIN is the primary env var (Issue #236)
+  const dashboardOrigin = process.env.DASHBOARD_ORIGIN;
+  if (dashboardOrigin) return [dashboardOrigin];
+
   const raw = process.env.ALLOWED_ORIGINS ?? "";
   const fromEnv = raw
     .split(",")

@@ -4,8 +4,9 @@ import { useState, useEffect } from "react";
 import { Btn } from "../primitives/btn";
 import { Card } from "../primitives/card";
 import type { Transaction } from "../types";
+import { AGENT_URL } from "../../lib/agent-url";
+import { agentFetch } from "../../lib/agent-fetch";
 
-const AGENT_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
 
 export interface ApprovalsTabProps {
   agentConnected: boolean;
@@ -14,10 +15,11 @@ export interface ApprovalsTabProps {
 export function ApprovalsTab({ agentConnected }: ApprovalsTabProps) {
   const [approvals, setApprovals] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
+  const [, setTick] = useState(0);
 
   const fetchApprovals = async () => {
     try {
-      const res = await fetch(`${AGENT_URL}/agent/pending-approvals`);
+      const res = await agentFetch(`${AGENT_URL}/agent/pending-approvals`);
       if (!res.ok) return;
       const data = await res.json();
       setApprovals(data.approvals || []);
@@ -26,14 +28,19 @@ export function ApprovalsTab({ agentConnected }: ApprovalsTabProps) {
 
   useEffect(() => {
     fetchApprovals();
+    fetchApprovals();
     const i = setInterval(fetchApprovals, 5000);
-    return () => clearInterval(i);
+    const t = setInterval(() => setTick((s) => s + 1), 1000);
+    return () => {
+      clearInterval(i);
+      clearInterval(t);
+    };
   }, []);
 
   const handleApprove = async (txId: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${AGENT_URL}/agent/approvals/${txId}`, {
+      const res = await agentFetch(`${AGENT_URL}/agent/approvals/${txId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ approve: true }),
@@ -44,10 +51,10 @@ export function ApprovalsTab({ agentConnected }: ApprovalsTabProps) {
     }
   };
 
-  const handleReject = async (txId: string) => {
+  const handleCancel = async (txId: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${AGENT_URL}/agent/approvals/${txId}`, {
+      const res = await agentFetch(`${AGENT_URL}/agent/approvals/${txId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ approve: false }),
@@ -94,6 +101,19 @@ export function ApprovalsTab({ agentConnected }: ApprovalsTabProps) {
                     <div className="text-xs text-slate-400 mt-1">
                       {new Date(tx.timestamp).toLocaleString()}
                     </div>
+                    {tx.pendingUntil && (
+                      <div className="text-xs text-amber-600 mt-1">
+                        {(() => {
+                          try {
+                            const ms = new Date(tx.pendingUntil).getTime() - Date.now();
+                            const sec = Math.max(0, Math.ceil(ms / 1000));
+                            return `Auto-approve in ${sec}s`;
+                          } catch {
+                            return null;
+                          }
+                        })()}
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -104,11 +124,11 @@ export function ApprovalsTab({ agentConnected }: ApprovalsTabProps) {
                       Approve
                     </button>
                     <button
-                      onClick={() => handleReject(tx.id)}
+                      onClick={() => handleCancel(tx.id)}
                       disabled={loading}
                       className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer"
                     >
-                      Reject
+                      Cancel
                     </button>
                   </div>
                 </div>
@@ -130,8 +150,8 @@ export function ApprovalsTab({ agentConnected }: ApprovalsTabProps) {
             it creates a pending transaction instead of paying immediately.
           </p>
           <p>
-            You can review and approve or reject each pending transaction here.
-            Approving will execute the payment; rejecting will cancel it.
+            You can review and approve or cancel each pending transaction here.
+            Approving will execute the payment; canceling will stop it.
           </p>
         </div>
       </div>

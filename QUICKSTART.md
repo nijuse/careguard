@@ -6,7 +6,7 @@ Get CareGuard running on Stellar testnet with real x402 and MPP payments.
 
 ## Prerequisites
 
-- **Node.js** 20 or later
+- **Node.js** 22 or later
 - **npm** (comes with Node.js)
 - **A Groq API key** (free) — [console.groq.com](https://console.groq.com)
 - **An OZ Facilitator API key** (free) — [channels.openzeppelin.com/testnet/gen](https://channels.openzeppelin.com/testnet/gen)
@@ -57,6 +57,14 @@ Fill in these required values:
 | `OZ_FACILITATOR_API_KEY` | [channels.openzeppelin.com/testnet/gen](https://channels.openzeppelin.com/testnet/gen) |
 | `MPP_SECRET_KEY` | Run: `openssl rand -hex 32` |
 | `LLM_API_KEY` | [console.groq.com](https://console.groq.com) (or any OpenAI-compatible provider) |
+
+For the dashboard, copy `.env.local.example` to `.env.local` and edit it if your agent API runs on a different URL:
+
+```bash
+cd dashboard
+cp .env.local.example .env.local
+cd ..
+```
 
 ---
 

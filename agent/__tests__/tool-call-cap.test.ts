@@ -8,7 +8,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 
 vi.mock("dotenv/config", () => ({}));
-vi.mock("../../shared/audit-log.ts", () => ({ appendAuditEntry: vi.fn() }));
+vi.mock("../../shared/audit-log.ts", () => ({
+  appendAuditEntry: vi.fn(),
+  auditRouter: () => (req: any, res: any, next: any) => next(),
+}));
 vi.mock("../../shared/cors.ts", () => ({
   createCorsMiddleware: () => (_req: any, _res: any, next: any) => next(),
 }));
@@ -37,6 +40,7 @@ vi.mock("../../agent/tools.ts", () => ({
   getSpendingTracker: vi.fn(() => ({ transactions: [], medications: 0, bills: 0, serviceFees: 0 })),
   resetSpendingTracker: vi.fn(),
   TOOL_DEFINITIONS: [],
+  validateToolInput: vi.fn((_name: string, input: Record<string, unknown>) => input),
 }));
 vi.mock("../../shared/wallet-balance.ts", () => ({
   checkWalletBalance: vi.fn(async () => ({ action: "ok" })),
@@ -72,8 +76,10 @@ process.env.PHARMACY_1_PUBLIC_KEY = "GBQTESTPHARMACY1";
 process.env.BILL_PROVIDER_PUBLIC_KEY = "GBQTESTBILLPROVIDER";
 process.env.MPP_SECRET_KEY = "test-mpp-secret";
 process.env.MAX_TOOL_CALLS_PER_RUN = "5";
+process.env.CAREGIVER_TOKEN = "test-caregiver-token";
 
 const { app } = await import("../../server.ts");
+const auth = (req: any) => req.set("Authorization", "Bearer test-agent-api-key");
 
 describe("tool call cap", () => {
   beforeEach(() => {
@@ -102,8 +108,7 @@ describe("tool call cap", () => {
       usage: { prompt_tokens: 10, completion_tokens: 5 },
     }));
 
-    const res = await request(app)
-      .post("/agent/run")
+    const res = await auth(request(app).post("/agent/run"))
       .send({ task: "Run the spending summary repeatedly" });
 
     expect(res.status).toBe(200);
@@ -131,8 +136,7 @@ describe("tool call cap", () => {
       };
     });
 
-    const res = await request(app)
-      .post("/agent/run")
+    const res = await auth(request(app).post("/agent/run"))
       .send({ task: "Check spending summary" });
 
     expect(res.status).toBe(200);
